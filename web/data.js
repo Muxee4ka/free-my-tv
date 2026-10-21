@@ -51,6 +51,7 @@ var Prefs = (function () {
     coin: function (i) { var c = pick('coins', null); return c ? c[i] !== false : true; },
     shelf: function () { return pick('shelf', null); },
     shelfSize: function () { return pick('shelfSize', 8); },   // how many apps the shelf shows
+    cards: function () { return pick('cards', 12); },          // how many picks each tab's strip holds
     set: function (name, value) { v[name] = value; save(); this.version++; },
     setCoin: function (i, on) {
       var c = (pick('coins', null) || [true, true, true, true]).slice();
@@ -226,7 +227,7 @@ var Data = (function () {
       historyAt = Date.now();
       var cards = {}, list = [];
       for (var i = 0; i < d.card.length; i++) cards[d.card[i].id] = d.card[i];
-      for (var j = 0; j < d.history.length && list.length < 3; j++) {
+      for (var j = 0; j < d.history.length && list.length < 10; j++) {
         var c = cards[d.history[j]];
         if (!c || !c.backdrop_path) continue;
         var tv = !!c.name, parts = [I18N.lang === 'ru' ? (tv ? 'Сериал' : 'Фильм') : tv ? tr('Série', 'Series', 'Serie') : tr('Filme', 'Movie', 'Película')];
@@ -318,8 +319,9 @@ var Data = (function () {
     }
     if (!list.length) return list;
     var hour = Math.floor(Date.now() / 3600000), out = [], seen = {};
-    for (var j = 0; j < list.length && out.length < 3; j++) {
-      var q = list[(hour * 3 + j) % list.length], f = franchise(q.title);
+    var n = Prefs.cards();
+    for (var j = 0; j < list.length && out.length < n; j++) {
+      var q = list[(hour * n + j) % list.length], f = franchise(q.title);
       if (!seen[f]) { seen[f] = true; out.push(q); }
     }
     return out;
@@ -541,7 +543,7 @@ var Data = (function () {
     activeCoins: activeCoins,
     hasKey: function () { return ON; },
     recsError: function () { return recsError; },
-    picks: function (kind) { return kind === 'continue' ? history : now(kind); },
+    picks: function (kind) { return kind === 'continue' ? history.slice(0, Prefs.cards()) : now(kind); },
     hasHistory: function () { return !!BOOKMARKS; },
     showcase: all,
     image: function (path, size) { return path ? IMAGES + (size || 'w1280') + path : ''; },

@@ -95,6 +95,7 @@
     ['spotify', /spotify/, /spotify/i, ['#1DB954', '#0F7A36']]
   ];
   var SHELF_SIZES = [3, 4, 5, 6, 7, 8, 9, 10];   // the choices in Settings (Prefs.shelfSize)
+  var CARD_COUNTS = [3, 6, 9, 12, 18, 24];        // and for the picks in each tab's strip (Prefs.cards)
 
   function shelfKey(app) {
     for (var i = 0; i < SHELF.length; i++) if (SHELF[i][1].test(app.id) || SHELF[i][2].test(app.title)) return SHELF[i];
@@ -172,6 +173,7 @@
     setClass($('quotes'), 'hide', st.zone === Z.TOP && st.top >= NT);
     list = $('cards').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.CARDS && st.card === i);
+    scrollCards();
     list = $('tiles').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.SHELF && st.shelf === i);
     list = document.querySelectorAll('#drawer .key');
@@ -259,7 +261,9 @@
     if (same && holder.children.length === list.length) return;
     cards = list;
     holder.innerHTML = '';
-    var rects = [[80, 1040], [1160, 320], [1520, 320]];
+    // A strip: the first pick large, then the others; three fit on the screen and ← → scroll it (scrollCards).
+    var rects = [];
+    for (var r = 0; r < list.length; r++) rects.push(r === 0 ? [80, 1040] : [1160 + (r - 1) * 360, 320]);
     for (var c = 0; c < list.length; c++) {
       var p = list[c], card = el('div', 'card', holder);
       card.style.left = rects[c][0] + 'px';
@@ -274,6 +278,20 @@
     if (!list.length && st.zone === Z.CARDS) st.zone = Z.SHELF;
     backdrop(list.length ? Data.image(list[0].backdrop, 'w300') : '');
     updateFocus();
+  }
+
+  var stripAt = 0;
+
+  /** Moves the strip so the focused pick is on screen (back to the start at the first three), its photo behind. */
+  function scrollCards() {
+    var nodes = $('cards').children;
+    if (st.zone === Z.CARDS && nodes[st.card]) {
+      var right = parseFloat(nodes[st.card].style.left) + parseFloat(nodes[st.card].style.width);
+      stripAt = Math.max(0, right - 1840);
+      if (cards[st.card]) backdrop(Data.image(cards[st.card].backdrop, 'w300'));
+    }
+    if (!nodes.length) stripAt = 0;
+    $('cards').style.webkitTransform = $('cards').style.transform = 'translateX(' + (-stripAt) + 'px)';
   }
 
   var bgUrl = null, bgFront = 'bgA';
@@ -509,6 +527,9 @@
           step: function () { if (Prefs.quotes()) { Prefs.setCoin(i, !Prefs.coin(i)); Data.settingsChanged(); } }});
       })(i);
     }
+    rows.push({label: I18N.lang === 'ru' ? 'Карточек в ленте' : tr('Títulos por aba', 'Picks per tab', 'Títulos por pestaña'),
+      value: String(Prefs.cards()),
+      step: function (d) { cycle('cards', CARD_COUNTS, Prefs.cards(), d); renderCards(); Data.refresh(); }});
     rows.push({label: I18N.lang === 'ru' ? 'Иконок на полке' : tr('Apps na prateleira', 'Apps on the shelf', 'Apps en el estante'),
       value: String(Prefs.shelfSize()),
       step: function (d) { cycle('shelfSize', SHELF_SIZES, Prefs.shelfSize(), d); pickShelf(); renderShelf(); }});
