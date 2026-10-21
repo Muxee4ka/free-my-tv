@@ -33,6 +33,57 @@ var TV = (function () {
     bridge.call(uri, JSON.stringify(params || {}));
   }
 
+  // webOS 24 denies Luna's app list to Developer Mode apps. The TV's remote-control API (SSAP, the one LG's phone app
+  // and Home Assistant use) still lists them, once the TV has asked to allow the connection. The key it hands back is
+  // kept, so it asks only once. The manifest is LG's own signed one, as every SSAP client sends it.
+  var SSAP_KEY = 'fmtv.ssapKey';
+  var SSAP_MANIFEST = {
+    manifestVersion: 1, appVersion: '1.1', permissions: ['LAUNCH', 'READ_INSTALLED_APPS'],
+    signatures: [{signatureVersion: 1, signature: 'eyJhbGdvcml0aG0iOiJSU0EtU0hBMjU2Iiwia2V5SWQiOiJ0ZXN0LXNpZ25pbmctY2VydCIsInNpZ25hdHVyZVZlcnNpb24iOjF9.' +
+      'hrVRgjCwXVvE2OOSpDZ58hR+59aFNwYDyjQgKk3auukd7pcegmE2CzPCa0bJ0ZsRAcKkCTJrWo5iDzNhMBWRyaMOv5zWSrthlf7G128qvIlpMT0YNY+n/' +
+      'FaOHE73uLrS/g7swl3/qH/BGFG2Hu4RlL48eb3lLKqTt2xKHdCs6Cd4RMfJPYnzgvI4BNrFUKsjkcu+WD4OO2A27Pq1n50cMchmcaXadJhGrOqH5YmHdOCj5' +
+      'NSHzJYrsW0HPlpuAx/ECMeIZYDh6RMqaFM2DXzdKX9NmmyqzJ3o/0lkk/N97gfVRLW5hA29yeAwaCViZNCP8iC9aO0q9fQojoa7NQnAtw=='}],
+    signed: {
+      appId: 'com.lge.test', created: '20140509', serial: '2f930e2d2cfe083771f68e4fe7bb07', vendorId: 'com.lge',
+      localizedAppNames: {'': 'LG Remote App', 'ko-KR': '리모컨 앱', 'zxx-XX': 'ЛГ Rэмotэ AПП'},
+      localizedVendorNames: {'': 'LG Electronics'},
+      permissions: ['TEST_SECURE', 'CONTROL_INPUT_TEXT', 'CONTROL_MOUSE_AND_KEYBOARD', 'READ_INSTALLED_APPS', 'READ_LGE_SDX',
+        'READ_NOTIFICATIONS', 'SEARCH', 'WRITE_SETTINGS', 'WRITE_NOTIFICATION_ALERT', 'CONTROL_POWER', 'READ_CURRENT_CHANNEL',
+        'READ_RUNNING_APPS', 'READ_UPDATE_INFO', 'UPDATE_FROM_REMOTE_APP', 'READ_LGE_TV_INPUT_EVENTS', 'READ_TV_CURRENT_TIME']
+    }
+  };
+
+  /** One SSAP request over the TV's own socket; done(payload) with null on failure. */
+  function ssap(uri, done) {
+    var ws, finished = false, key = null;
+    try { key = localStorage.getItem(SSAP_KEY); } catch (e) {}
+    function finish(result) {
+      if (finished) return;
+      finished = true;
+      try { ws.close(); } catch (e) {}
+      done(result);
+    }
+    try { ws = new WebSocket('ws://127.0.0.1:3000'); } catch (e) { done(null); return; }
+    var payload = {forcePairing: false, pairingType: 'PROMPT', manifest: SSAP_MANIFEST};
+    if (key) payload['client-key'] = key;
+    ws.onopen = function () { ws.send(JSON.stringify({type: 'register', id: 'register', payload: payload})); };
+    ws.onmessage = function (m) {
+      var d = null;
+      try { d = JSON.parse(m.data); } catch (e) {}
+      if (!d) return;
+      if (d.type === 'registered') {
+        try { localStorage.setItem(SSAP_KEY, d.payload['client-key']); } catch (e) {}
+        ws.send(JSON.stringify({type: 'request', id: 'request', uri: 'ssap://' + uri}));
+      } else if (d.id === 'request') {
+        finish(d.type === 'response' && d.payload && d.payload.returnValue !== false ? d.payload : null);
+      } else if (d.type === 'error') {
+        finish(null);
+      }
+    };
+    ws.onerror = function () { finish(null); };
+    setTimeout(function () { finish(null); }, 90000);   // the TV waits for the person to allow it
+  }
+
   // LG inputs: the antenna and the four HDMI ports, with the apps LG opens for them.
   var INPUTS = [
     {id: 'com.webos.app.livetv', key: 'live', label: null, symbol: 'live_tv'},
@@ -170,7 +221,7 @@ var TV = (function () {
         done(SAMPLE.map(function (s) { return {id: s[0], title: s[1], icon: '', color: s[2]}; }));
         return;
       }
-      luna('luna://com.webos.applicationManager/listLaunchPoints', {}, function (res) {
+      function list(res) {
         var out = [];
         var points = res && res.launchPoints ? res.launchPoints : [];
         for (var i = 0; i < points.length; i++) {
@@ -179,6 +230,10 @@ var TV = (function () {
           out.push({id: p.id, title: p.title || p.id, icon: p.largeIcon || p.icon || '', color: p.bgColor || p.iconColor || ''});
         }
         done(out);
+      }
+      luna('luna://com.webos.applicationManager/listLaunchPoints', {}, function (res) {
+        if (res) list(res);
+        else ssap('com.webos.applicationManager/listLaunchPoints', list);
       });
     },
 
