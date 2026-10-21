@@ -29,11 +29,23 @@
   }
 
   function coin(i, parent) {
-    var c = window.COINS && window.COINS[i];
-    if (!c) return;
     var ns = 'http://www.w3.org/2000/svg';
     var svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', '0 0 32 32');
+    if (Data.fiat) {   // the currency's sign, drawn like the coins' logos
+      var t = document.createElementNS(ns, 'text');
+      t.setAttribute('x', '16');
+      t.setAttribute('y', '26');
+      t.setAttribute('text-anchor', 'middle');
+      t.setAttribute('font-size', '28');
+      t.setAttribute('font-weight', '700');
+      t.textContent = ['$', '€', '¥'][i];
+      svg.appendChild(t);
+      parent.appendChild(svg);
+      return;
+    }
+    var c = window.COINS && window.COINS[i];
+    if (!c) return;
     for (var k = 0; k < c.length; k++) {
       var p = document.createElementNS(ns, 'path');
       p.setAttribute('d', c[k]);
@@ -60,11 +72,19 @@
 
   // MARK: - Apps on the shelf
 
-  /** Shelf apps in this order when installed, like the Android app: key, LG app id, name on the TV, brand gradient. */
+  /**
+   * Shelf apps in this order when installed, like the Android app: key, LG app id, name on the TV, brand gradient, and
+   * false for the ones that know their colors but don't go on the shelf by themselves (not available in Russia).
+   */
   var SHELF = [
-    ['netflix', /^netflix$/, /netflix/i, ['#0A0A0A', '#000000']],
-    ['youtube', /youtube/, /^youtube$/i, ['#1C1C1E', '#09090A']],
-    ['prime', /^amazon$/, /prime video|amazon/i, ['#2AA8FF', '#0A68D4']],
+    ['youtube', /youtube/, /^youtube$/i, ['#FF2D3A', '#B0000F']],
+    ['lampa', /^lampa/i, /^lampa$/i, ['#5B3FD9', '#1E1250']],
+    ['moonlight', /limelight|moonlight/i, /^moonlight$/i, ['#2E6BD8', '#0C1E45']],
+    ['kinopoisk', /^com\.685631\./, /кинопоиск|kinopoisk/i, ['#FF6A00', '#B83600']],
+    ['okko', /^yota\.play$/, /^okko/i, ['#7A3CF0', '#2C0E7A']],
+    ['ivi', /^ivi$/, /^иви$|^ivi$/i, ['#F0164B', '#7E0A26']],
+    ['netflix', /^netflix$/, /netflix/i, ['#0A0A0A', '#000000'], false],
+    ['prime', /^amazon$/, /prime video|amazon/i, ['#2AA8FF', '#0A68D4'], false],
     ['disney', /disney/, /disney/i, ['#173584', '#08143F']],
     ['max', /hbo|wbd/, /^(hbo )?max$|hbo max/i, ['#5C30E8', '#221684']],
     ['appletv', /appletv|apple\.tv/, /apple tv/i, ['#1C1C1E', '#000000']],
@@ -100,7 +120,7 @@
     var bottom = k ? k[3][1] : app.color ? darken(app.color, 0.62) : '#161618';
     box.style.background = '-webkit-linear-gradient(top, ' + top + ', ' + bottom + ')';
     box.style.background = 'linear-gradient(' + top + ', ' + bottom + ')';
-    var word = el('div', 'word', box, app.title);
+    var word = el('div', 'word', box, app.title.split(/ - |: /)[0]);   // "Okko: кино, сериалы…" → "Okko"
     if (wordSize) word.style.fontSize = wordSize + 'px';
     if (app.icon) {
       var img = el('img', '', box);
@@ -120,6 +140,7 @@
       }
     } else {
       for (var s = 0; s < SHELF.length && out.length < MAX_SHELF; s++) {
+        if (SHELF[s][4] === false) continue;
         for (var a = 0; a < apps.length; a++) {
           if ((SHELF[s][1].test(apps[a].id) || SHELF[s][2].test(apps[a].title)) && out.indexOf(apps[a]) < 0) { out.push(apps[a]); break; }
         }
@@ -146,8 +167,8 @@
       setClass(list[i], 'focus', st.zone === Z.TOP && st.top === i);
     }
     list = $('buttons').children;
-    for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.TOP && st.top === 3 + i);
-    setClass($('quotes'), 'hide', st.zone === Z.TOP && st.top >= 3);
+    for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.TOP && st.top === NT + i);
+    setClass($('quotes'), 'hide', st.zone === Z.TOP && st.top >= NT);
     list = $('cards').children;
     for (i = 0; i < list.length; i++) setClass(list[i], 'focus', st.zone === Z.CARDS && st.card === i);
     list = $('tiles').children;
@@ -189,14 +210,17 @@
 
   // MARK: - Top: title, tabs, buttons, quotes
 
-  var TAB_KIND = [null, 'movie', 'tv'];
+  // With Lampa's history (through Lampac), a fourth tab: what was watched last, to continue it.
+  var TAB_KIND = Data.hasHistory() ? [null, 'movie', 'tv', 'continue'] : [null, 'movie', 'tv'];
+  var NT = TAB_KIND.length;   // the tabs come first in the top row, then the three round buttons
 
   function renderTop() {
     $('title').textContent = tr('Para você', 'For You', 'Para ti');
     var tabs = $('tabs');
     tabs.innerHTML = '';
-    var names = [tr('Explorar', 'Explore', 'Explorar'), tr('Filmes', 'Movies', 'Películas'), tr('Séries', 'Shows', 'Series')];
-    for (var i = 0; i < 3; i++) {
+    var names = [tr('Explorar', 'Explore', 'Explorar'), tr('Filmes', 'Movies', 'Películas'), tr('Séries', 'Shows', 'Series'),
+      I18N.lang === 'ru' ? 'Продолжить' : tr('Continuar', 'Continue', 'Continuar')];
+    for (var i = 0; i < NT; i++) {
       var t = el('button', 'tab', tabs, names[i]);
       hover(t, Z.TOP, i);
     }
@@ -209,7 +233,7 @@
       r.style.left = (1596 + 88 * b) + 'px';
       sym(defs[b][0], r);
       el('div', 'tip', r, defs[b][1]);
-      hover(r, Z.TOP, 3 + b);
+      hover(r, Z.TOP, NT + b);
     }
   }
 
@@ -397,9 +421,10 @@
   }
 
   function renderPrices(card, coins) {
-    el('div', 'head', card, tr('Cotações', 'Crypto', 'Cripto'));
-    var stale = Data.staleness(Data.pricesAt, 5 * 60000);
-    el('div', 'side', card, stale || tr('variação em 24 h', '24h change', 'variación en 24 h'));
+    el('div', 'head', card, Data.fiat ? (I18N.lang === 'ru' ? 'Курсы ЦБ' : 'Exchange rates') : tr('Cotações', 'Crypto', 'Cripto'));
+    var stale = Data.staleness(Data.pricesAt, Data.fiat ? 36 * 3600000 : 5 * 60000);
+    el('div', 'side', card, stale || (Data.fiat ? (I18N.lang === 'ru' ? 'к прошлому курсу' : 'vs previous rate')
+        : tr('variação em 24 h', '24h change', 'variación en 24 h')));
     for (var j = 0; j < coins.length; j++) {
       var i = coins[j], row = el('div', 'coin', card);
       row.style.top = (86 + 52 * j) + 'px';
@@ -476,11 +501,10 @@
       {label: tr('Widget de cotações', 'Quotes widget', 'Widget de cotizaciones'), toggle: Prefs.quotes(),
         step: function () { Prefs.set('quotes', !Prefs.quotes()); Data.settingsChanged(); }}
     ];
-    var names = ['Bitcoin', 'Ethereum', 'Solana', tr('Dólar', 'Dollar', 'Dólar')];
     var count = Data.currency === 'BRL' ? 4 : 3;
     for (var i = 0; i < count; i++) {
       (function (i) {
-        rows.push({label: names[i], toggle: Prefs.quotes() && Prefs.coin(i), dim: !Prefs.quotes(),
+        rows.push({label: Data.coinName(i), toggle: Prefs.quotes() && Prefs.coin(i), dim: !Prefs.quotes(),
           step: function () { if (Prefs.quotes()) { Prefs.setCoin(i, !Prefs.coin(i)); Data.settingsChanged(); } }});
       })(i);
     }
@@ -596,9 +620,9 @@
 
   // MARK: - Opening things
 
-  function launcher(id, name) {
+  function launcher(id, name, params) {
     return function () {
-      TV.launch(id, null, function (ok) {
+      TV.launch(id, params || null, function (ok) {
         if (!ok) toast(tr('Não deu para abrir ', "Couldn't open ", 'No se pudo abrir ') + (name || id));
       });
     };
@@ -618,14 +642,15 @@
   function activate() {
     switch (st.zone) {
       case Z.TOP:
-        if (st.top < 3) return;
-        if (st.top === 3) { var live = liveTV(); if (live) launcher(live.id, tr('TV aberta', 'Live TV', 'TV en vivo'))(); }
-        else if (st.top === 4) { st.zone = Z.SHELF; openDrawer(); st.drawer = 1 < drawerInputs ? 1 : 0; updateFocus(); }
+        if (st.top < NT) return;
+        if (st.top === NT) { var live = liveTV(); if (live) launcher(live.id, tr('TV aberta', 'Live TV', 'TV en vivo'))(); }
+        else if (st.top === NT + 1) { st.zone = Z.SHELF; openDrawer(); st.drawer = 1 < drawerInputs ? 1 : 0; updateFocus(); }
         else openSettings();
         return;
       case Z.CARDS:
         var p = cards[st.card], app = p && Data.appFor(p.app);
-        if (app) launcher(app.id, app.title)();
+        // Lampa opens the title's card itself (TMDB id and kind; see lampa/fmtv_deeplink.js), the others just open.
+        if (app) launcher(app.id, app.title, p.app === 'lampa' ? {card: p.id, media: p.kind, source: 'tmdb'} : null)();
         return;
       case Z.SHELF:
         if (shelf[st.shelf]) launcher(shelf[st.shelf].id, shelf[st.shelf].title)();
@@ -669,10 +694,10 @@
         break;
       case Z.TOP:
         if (dx) {
-          st.top = Math.max(0, Math.min(5, st.top + dx));
-          if (st.top < 3) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
+          st.top = Math.max(0, Math.min(NT + 2, st.top + dx));
+          if (st.top < NT) selectTab(st.top);   // as on Apple TV: focusing a tab selects it
         } else if (dy > 0) {
-          if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < 3 ? 0 : cards.length - 1); }
+          if (cards.length) { st.zone = Z.CARDS; st.card = Math.min(cards.length - 1, st.top < NT ? 0 : cards.length - 1); }
           else st.zone = Z.SHELF;
         }
         break;
@@ -715,7 +740,7 @@
       if (zone !== Z.DRAWER && st.zone === Z.DRAWER && zone !== Z.SHELF) return;
       if (zone === Z.SHELF && st.zone === Z.DRAWER) closeDrawer();
       st.zone = zone;
-      if (zone === Z.TOP) { st.top = index; if (index < 3) selectTab(index); }
+      if (zone === Z.TOP) { st.top = index; if (index < NT) selectTab(index); }
       else if (zone === Z.CARDS) st.card = index;
       else if (zone === Z.SHELF) st.shelf = index;
       else if (zone === Z.DRAWER) st.drawer = index;

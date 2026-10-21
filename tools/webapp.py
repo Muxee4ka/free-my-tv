@@ -11,7 +11,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-GENERIC = {'tmdbKey': '', 'tmdbRegion': '', 'latitude': '', 'longitude': '', 'city': '', 'language': 'auto',
+GENERIC = {'tmdbKey': '', 'tmdbProxy': '', 'cubLists': '', 'lampacBookmarks': '', 'tmdbRegion': '', 'latitude': '', 'longitude': '', 'city': '', 'language': 'auto',
            'currency': '', 'temperature': 'auto', 'showCrypto': True}
 
 
@@ -46,6 +46,9 @@ def read_config(path):
 
     return {
         'tmdbKey': values.get('tmdb_key', ''),
+        'tmdbProxy': values.get('tmdb_proxy', '').rstrip('/'),
+        'cubLists': values.get('cub_lists', '').rstrip('/'),
+        'lampacBookmarks': values.get('lampac_bookmarks', ''),
         'tmdbRegion': values.get('tmdb_region', 'US') or 'US',
         'latitude': number('latitude', '40.7128'),
         'longitude': number('longitude', '-74.0060'),

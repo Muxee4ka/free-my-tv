@@ -139,9 +139,11 @@ var Data = (function () {
 
   // MARK: - Prices
 
-  var COINS = ['BTC', 'ETH', 'SOL', 'USDT'];
   var CURRENCY = Place.currency;
-  var QUOTE = CURRENCY === 'USD' ? 'USDT' : CURRENCY;
+  // In rubles the quotes are the Central Bank's rates instead (Binance has no ruble): the dollar, the euro, the yuan.
+  var FIAT = CURRENCY === 'RUB';
+  var COINS = FIAT ? ['USD', 'EUR', 'CNY'] : ['BTC', 'ETH', 'SOL', 'USDT'];
+  var QUOTE = FIAT ? 'CBR' : CURRENCY === 'USD' ? 'USDT' : CURRENCY;
   var prices = [NaN, NaN, NaN, NaN], changes = [NaN, NaN, NaN, NaN], pricesAt = 0, fetchingPrices = false;
 
   /** Indexes in COINS of the coins that are on (the dollar only in Brazilian reais, where Binance lists it). */
@@ -154,6 +156,17 @@ var Data = (function () {
 
   function parsePrices(list) {
     var found = 0;
+    if (FIAT) {
+      var v = list && list.Valute;
+      for (var c = 0; v && c < COINS.length; c++) {
+        var r = v[COINS[c]];
+        if (!r || !(r.Nominal > 0)) continue;
+        found++;
+        prices[c] = r.Value / r.Nominal;
+        changes[c] = r.Previous > 0 ? (r.Value - r.Previous) / r.Previous * 100 : NaN;
+      }
+      return found;
+    }
     for (var i = 0; list && i < list.length; i++) {
       for (var k = 0; k < COINS.length; k++) {
         if (list[i].symbol !== COINS[k] + QUOTE) continue;
@@ -173,10 +186,12 @@ var Data = (function () {
 
   function refreshPrices() {
     var coins = activeCoins(), now = Date.now();
-    if (!coins.length || fetchingPrices || (now - pricesAt < 5 * 60000 && now >= pricesAt)) return;
+    if (!coins.length || fetchingPrices || (now - pricesAt < (FIAT ? 3600000 : 5 * 60000) && now >= pricesAt)) return;
     fetchingPrices = true;
     var symbols = coins.map(function (i) { return '%22' + COINS[i] + QUOTE + '%22'; }).join(',');
-    get('https://api.binance.com/api/v3/ticker/24hr?type=MINI&symbols=%5B' + symbols + '%5D', {}, function (err, body) {
+    var url = FIAT ? 'https://www.cbr-xml-daily.ru/daily_json.js'
+        : 'https://api.binance.com/api/v3/ticker/24hr?type=MINI&symbols=%5B' + symbols + '%5D';
+    get(url, {}, function (err, body) {
       fetchingPrices = false;
       if (err || !parsePrices(body)) return;
       pricesAt = Date.now();
@@ -188,8 +203,42 @@ var Data = (function () {
   // MARK: - Picks (TMDB)
 
   var KEY = (CONFIG.tmdbKey || '').trim();
+  var PROXY = (CONFIG.tmdbProxy || '').trim();   // a TMDB proxy with its own key (Lampac's /tmdb), or ''
+  var ON = !!(KEY || PROXY);
   var REGION = Place.country;
-  var API = 'https://api.themoviedb.org/3';
+  var API = PROXY ? PROXY + '/api/3' : 'https://api.themoviedb.org/3';
+  var IMAGES = PROXY ? PROXY + '/img/t/p/' : 'https://image.tmdb.org/t/p/';
+  // Lampa's CUB lists ("Now watching" among Lampa's viewers, by TMDB id), e.g. through Lampac's /cub/ proxy, or ''.
+  var CUB = (CONFIG.cubLists || '').trim();
+  // Lampa's bookmarks and history, synced by Lampac (its /bookmark/list with this TV's device token), or ''.
+  var BOOKMARKS = (CONFIG.lampacBookmarks || '').trim();
+  var history = (stored('history') || {}).list || [], historyAt = 0, fetchingHistory = false;
+
+  /** The last titles watched in Lampa, newest first, as picks that open Lampa. */
+  function refreshHistory() {
+    var t = Date.now();
+    if (!BOOKMARKS || fetchingHistory || (t - historyAt < 5 * 60000 && t >= historyAt)) return;
+    fetchingHistory = true;
+    get(BOOKMARKS, {Accept: 'application/json'}, function (err, d) {
+      fetchingHistory = false;
+      if (err || !d || !d.history || !d.card) return;
+      historyAt = Date.now();
+      var cards = {}, list = [];
+      for (var i = 0; i < d.card.length; i++) cards[d.card[i].id] = d.card[i];
+      for (var j = 0; j < d.history.length && list.length < 3; j++) {
+        var c = cards[d.history[j]];
+        if (!c || !c.backdrop_path) continue;
+        var tv = !!c.name, parts = [I18N.lang === 'ru' ? (tv ? 'Сериал' : 'Фильм') : tv ? tr('Série', 'Series', 'Serie') : tr('Filme', 'Movie', 'Película')];
+        if (c.genres && c.genres.length) parts.push(c.genres[0].name.toLowerCase());
+        parts.push('Lampa');
+        list.push({id: c.id, kind: tv ? 'tv' : 'movie', title: tv ? c.name : c.title, backdrop: c.backdrop_path,
+          meta: parts.join(' · '), app: 'lampa', service: 'Lampa', detailed: true});
+      }
+      history = list;
+      store('history', {list: list});
+      changed();
+    });
+  }
 
   /** Service name on TMDB (part of it, lowercase) → our key, how to find its app on the TV (id, name), its name. */
   var SERVICES = [
@@ -201,7 +250,9 @@ var Data = (function () {
     ['peacock', 'peacock', /peacock/, /peacock/i, 'Peacock'],
     ['globoplay', 'globoplay', /globoplay/, /globoplay/i, 'Globoplay'],
     ['max', 'max', /hbo|wbd|\.max/, /^(hbo )?max$|hbo max/i, 'Max'],
-    ['apple tv', 'appletv', /appletv|apple\.tv/, /apple tv/i, 'Apple TV']
+    ['apple tv', 'appletv', /appletv|apple\.tv/, /apple tv/i, 'Apple TV'],
+    // Lampa plays any title (through its Lampac server), so with it installed every pick opens there.
+    ['#lampa', 'lampa', /lampa/i, /^lampa$/i, 'Lampa']
   ];
 
   var installed = [];   // the TV's apps, from TV.apps()
@@ -227,6 +278,7 @@ var Data = (function () {
   }
 
   function tmdb(path, done) {
+    if (!KEY) { get(API + path, {Accept: 'application/json'}, done); return; }
     var bearer = KEY.indexOf('eyJ') === 0;   // read access token (v4) or API key (v3)
     var url = API + path + (bearer ? '' : (path.indexOf('?') >= 0 ? '&' : '?') + 'api_key=' + encodeURIComponent(KEY));
     get(url, bearer ? {Authorization: 'Bearer ' + KEY, Accept: 'application/json'} : {Accept: 'application/json'}, done);
@@ -244,7 +296,7 @@ var Data = (function () {
   }
 
   function sourceStamp() {
-    var s = KEY.length + ':' + KEY.slice(-6) + ':' + REGION;
+    var s = KEY.length + ':' + KEY.slice(-6) + ':' + REGION + ':' + CUB;
     for (var i = 0; i < SERVICES.length; i++) s += appFor(SERVICES[i][1]) ? '1' : '0';
     return s;
   }
@@ -258,7 +310,7 @@ var Data = (function () {
   /** This hour's 3 picks: movies ("movie"), shows ("tv") or both (null). */
   function now(kind) {
     var list = [];
-    if (!KEY) return list;
+    if (!ON) return list;
     for (var i = 0; i < picks.length; i++) {
       var p = picks[i];
       if ((kind === null || kind === p.kind) && (!p.detailed || (p.app && appFor(p.app)))) list.push(p);
@@ -324,6 +376,7 @@ var Data = (function () {
       }
       var wp = o['watch/providers'], here = wp && wp.results && wp.results[REGION], flat = here && here.flatrate;
       p.app = null;
+      if (appFor('lampa')) { p.app = 'lampa'; p.service = 'Lampa'; }
       for (var i = 0; flat && i < flat.length && !p.app; i++) {
         var s = service(flat[i].provider_name);
         if (s && appFor(s[1])) { p.app = s[1]; p.service = s[4]; }
@@ -383,12 +436,17 @@ var Data = (function () {
         var s = service(res.results[i].provider_name);
         if (s && appFor(s[1])) ids.push(res.results[i].provider_id);
       }
-      if (!ids.length) { done(new Error("none of the TV's streaming apps are on TMDB")); return; }
-      var common = '&language=' + lang() + '&watch_region=' + REGION + '&with_watch_monetization_types=flatrate&include_adult=false'
-          + '&sort_by=popularity.desc&with_watch_providers=' + encodeURIComponent(ids.join('|'));
+      var anything = !!appFor('lampa');
+      if (!ids.length && !anything) { done(new Error("none of the TV's streaming apps are on TMDB")); return; }
+      var common = '&language=' + lang() + '&include_adult=false&sort_by=popularity.desc' + (anything ? '' : '&watch_region=' + REGION
+          + '&with_watch_monetization_types=flatrate&with_watch_providers=' + encodeURIComponent(ids.join('|')));
       var hot = {movie: [], tv: []}, fresh = {movie: [], tv: []};
       each(['movie', 'tv'], function (kind, next) {
-        tmdb('/trending/' + kind + '/week?language=' + lang(), function (e, r) {
+        function trending(cb) {
+          if (CUB) get(CUB + '/?cat=' + kind + '&sort=now_playing', {Accept: 'application/json'}, cb);
+          else tmdb('/trending/' + kind + '/week?language=' + lang(), cb);
+        }
+        trending(function (e, r) {
           var candidates = [];
           for (var j = 0; !e && j < r.results.length && j < 16; j++) addPick(candidates, r.results[j], kind);
           // Trending is only kept when it's on one of the TV's apps: the details say where.
@@ -415,7 +473,7 @@ var Data = (function () {
 
   /** Fetches the list when stale (6 h, a new period of the day, language, key or apps), then this hour's details. */
   function refreshRecs() {
-    if (!KEY || fetchingRecs || !installed.length) return;
+    if (!ON || fetchingRecs || !installed.length) return;
     var t = Date.now(), p = hourPeriod(new Date()), st = sourceStamp();
     if (st === stamp && failedAt && t - failedAt < 10 * 60000 && t >= failedAt) return;
     var stale = st !== stamp || p !== period || t - listAt > 6 * 3600000 || t < listAt || !picks.length || listLang !== I18N.lang;
@@ -472,7 +530,7 @@ var Data = (function () {
     onChange: function (fn) { listeners.push(fn); },
     setApps: function (apps) { installed = apps; },
     appFor: appFor,
-    refresh: function () { refreshWeather(); refreshPrices(); refreshRecs(); },
+    refresh: function () { refreshWeather(); refreshPrices(); refreshRecs(); refreshHistory(); },
     settingsChanged: function () { pricesAt = 0; refreshPrices(); changed(); },
     get weather() { return weather; },
     get weatherAt() { return weatherAt; },
@@ -480,11 +538,12 @@ var Data = (function () {
     changes: changes,
     get pricesAt() { return pricesAt; },
     activeCoins: activeCoins,
-    hasKey: function () { return !!KEY; },
+    hasKey: function () { return ON; },
     recsError: function () { return recsError; },
-    picks: now,
+    picks: function (kind) { return kind === 'continue' ? history : now(kind); },
+    hasHistory: function () { return !!BOOKMARKS; },
     showcase: all,
-    image: function (path, size) { return path ? 'https://image.tmdb.org/t/p/' + (size || 'w1280') + path : ''; },
+    image: function (path, size) { return path ? IMAGES + (size || 'w1280') + path : ''; },
 
     /** Night at the location: from sunset to sunrise (the last forecast; without one, 6:00 and 18:00). */
     isNight: function (at) {
@@ -505,6 +564,7 @@ var Data = (function () {
       return fmt(v, 2);
     },
     money: function (v) {
+      if (FIAT) return (isNaN(v) ? '—' : fmt(v, 2)) + ' ₽';
       var s = SYMBOLS[CURRENCY] || CURRENCY + ' ';
       if (isNaN(v)) return s + '—';
       return s + (v >= 1000 ? fmt(v, 0) : fmt(v, 2));
@@ -557,6 +617,10 @@ var Data = (function () {
       if (code >= 95) return 'thunderstorm';
       return 'rainy';
     },
-    coinName: function (i) { return i === 3 ? tr('Dólar', 'Dollar', 'Dólar') : ['Bitcoin', 'Ethereum', 'Solana'][i]; }
+    fiat: FIAT,
+    coinName: function (i) {
+      if (FIAT) return I18N.lang === 'ru' ? ['Доллар', 'Евро', 'Юань'][i] : ['Dollar', 'Euro', 'Yuan'][i];
+      return i === 3 ? tr('Dólar', 'Dollar', 'Dólar') : ['Bitcoin', 'Ethereum', 'Solana'][i];
+    }
   };
 })();
