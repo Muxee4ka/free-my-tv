@@ -280,7 +280,7 @@
     updateFocus();
   }
 
-  var stripAt = 0;
+  var stripAt = 0, bgTimer = 0;
 
   /** Moves the strip so the focused pick is on screen (back to the start at the first three), its photo behind. */
   function scrollCards() {
@@ -288,7 +288,10 @@
     if (st.zone === Z.CARDS && nodes[st.card]) {
       var right = parseFloat(nodes[st.card].style.left) + parseFloat(nodes[st.card].style.width);
       stripAt = Math.max(0, right - 1840);
-      if (cards[st.card]) backdrop(Data.image(cards[st.card].backdrop, 'w300'));
+      // the photo behind follows only once the focus rests: redrawing it at every step stutters
+      clearTimeout(bgTimer);
+      var p = cards[st.card];
+      if (p) bgTimer = setTimeout(function () { backdrop(Data.image(p.backdrop, 'w300')); }, 300);
     }
     if (!nodes.length) stripAt = 0;
     $('cards').style.webkitTransform = $('cards').style.transform = 'translateX(' + (-stripAt) + 'px)';
