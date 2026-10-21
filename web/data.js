@@ -252,7 +252,7 @@ var Data = (function () {
     ['max', 'max', /hbo|wbd|\.max/, /^(hbo )?max$|hbo max/i, 'Max'],
     ['apple tv', 'appletv', /appletv|apple\.tv/, /apple tv/i, 'Apple TV'],
     // Lampa plays any title (through its Lampac server), so with it installed every pick opens there.
-    ['#lampa', 'lampa', /lampa/i, /^lampa$/i, 'Lampa']
+    ['#lampa', 'lampa', /^lampa\.lampac$/, /^lampa$/i, 'Lampa']
   ];
 
   var installed = [];   // the TV's apps, from TV.apps()
@@ -261,9 +261,9 @@ var Data = (function () {
   function appFor(key) {
     for (var s = 0; s < SERVICES.length; s++) {
       if (SERVICES[s][1] !== key) continue;
-      for (var i = 0; i < installed.length; i++) {
-        if (SERVICES[s][2].test(installed[i].id) || SERVICES[s][3].test(installed[i].title)) return installed[i];
-      }
+      // By id first: two apps can share a name (LG's Lampa and the one that opens your own server).
+      for (var i = 0; i < installed.length; i++) if (SERVICES[s][2].test(installed[i].id)) return installed[i];
+      for (var k = 0; k < installed.length; k++) if (SERVICES[s][3].test(installed[k].title)) return installed[k];
     }
     return null;
   }

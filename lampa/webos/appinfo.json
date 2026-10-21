@@ -1,0 +1,14 @@
+{
+  "id": "lampa.lampac",
+  "version": "1.0.0",
+  "vendor": "Free My TV",
+  "type": "web",
+  "main": "index.html",
+  "title": "Lampa",
+  "icon": "icon.png",
+  "largeIcon": "largeIcon.png",
+  "iconColor": "#5B3FD9",
+  "resolution": "1920x1080",
+  "handlesRelaunch": true,
+  "disableBackHistoryAPI": true
+}

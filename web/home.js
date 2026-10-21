@@ -78,7 +78,7 @@
    */
   var SHELF = [
     ['youtube', /youtube/, /^youtube$/i, ['#FF2D3A', '#B0000F']],
-    ['lampa', /^lampa/i, /^lampa$/i, ['#5B3FD9', '#1E1250']],
+    ['lampa', /^lampa\.lampac$/, /^lampa$/i, ['#5B3FD9', '#1E1250']],
     ['moonlight', /limelight|moonlight/i, /^moonlight$/i, ['#2E6BD8', '#0C1E45']],
     ['kinopoisk', /^com\.685631\./, /кинопоиск|kinopoisk/i, ['#FF6A00', '#B83600']],
     ['okko', /^yota\.play$/, /^okko/i, ['#7A3CF0', '#2C0E7A']],
@@ -141,9 +141,10 @@
     } else {
       for (var s = 0; s < SHELF.length && out.length < MAX_SHELF; s++) {
         if (SHELF[s][4] === false) continue;
-        for (var a = 0; a < apps.length; a++) {
-          if ((SHELF[s][1].test(apps[a].id) || SHELF[s][2].test(apps[a].title)) && out.indexOf(apps[a]) < 0) { out.push(apps[a]); break; }
-        }
+        var found = null;   // by id first, as Data.appFor
+        for (var a = 0; a < apps.length && !found; a++) if (SHELF[s][1].test(apps[a].id)) found = apps[a];
+        for (var n = 0; n < apps.length && !found; n++) if (SHELF[s][2].test(apps[n].title)) found = apps[n];
+        if (found && out.indexOf(found) < 0) out.push(found);
       }
       if (!out.length) out = apps.slice(0, MAX_SHELF);
     }

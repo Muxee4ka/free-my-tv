@@ -1,0 +1,30 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; height: 100%; background: #0F0A24; color: #FFF; font: 32px sans-serif; }
+  #msg { position: absolute; left: 0; right: 0; top: 46%; text-align: center; opacity: 0; transition: opacity 0.3s; }
+</style>
+</head>
+<body>
+<div id="msg"></div>
+<script src="server.js"></script>
+<script>
+  // Lampa from your Lampac server, straight away. Free My TV's launch parameters ({card, media, source}) go into the
+  // address as ?card=, which Lampa opens itself on start; when Lampa is already open, fmtv_deeplink.js takes them.
+  (function () {
+    var p = {};
+    try { p = JSON.parse(window.PalmSystem && window.PalmSystem.launchParams || '{}') || {}; } catch (e) {}
+    var url = window.LAMPA_SERVER;
+    if (p.card) url += '/?card=' + encodeURIComponent(p.card) + '&media=' + (p.media === 'tv' ? 'tv' : 'movie') + '&source=' + encodeURIComponent(p.source || 'tmdb');
+    setTimeout(function () {   // still here: the server didn't answer
+      var m = document.getElementById('msg');
+      m.textContent = 'Сервер Lampa не отвечает: ' + window.LAMPA_SERVER;
+      m.style.opacity = 1;
+    }, 15000);
+    location.replace(url);
+  })();
+</script>
+</body>
+</html>
