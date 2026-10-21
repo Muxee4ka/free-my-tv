@@ -94,7 +94,7 @@
     ['globoplay', /globoplay/, /globoplay/i, ['#FF8A1F', '#FF2D5A']],
     ['spotify', /spotify/, /spotify/i, ['#1DB954', '#0F7A36']]
   ];
-  var MAX_SHELF = 8;
+  var SHELF_SIZES = [3, 4, 5, 6, 7, 8, 9, 10];   // the choices in Settings (Prefs.shelfSize)
 
   function shelfKey(app) {
     for (var i = 0; i < SHELF.length; i++) if (SHELF[i][1].test(app.id) || SHELF[i][2].test(app.title)) return SHELF[i];
@@ -135,18 +135,18 @@
   function pickShelf() {
     var chosen = Prefs.shelf(), out = [];
     if (chosen) {
-      for (var i = 0; i < chosen.length && out.length < MAX_SHELF; i++) {
+      for (var i = 0; i < chosen.length && out.length < Prefs.shelfSize(); i++) {
         for (var j = 0; j < apps.length; j++) if (apps[j].id === chosen[i]) out.push(apps[j]);
       }
     } else {
-      for (var s = 0; s < SHELF.length && out.length < MAX_SHELF; s++) {
+      for (var s = 0; s < SHELF.length && out.length < Prefs.shelfSize(); s++) {
         if (SHELF[s][4] === false) continue;
         var found = null;   // by id first, as Data.appFor
         for (var a = 0; a < apps.length && !found; a++) if (SHELF[s][1].test(apps[a].id)) found = apps[a];
         for (var n = 0; n < apps.length && !found; n++) if (SHELF[s][2].test(apps[n].title)) found = apps[n];
         if (found && out.indexOf(found) < 0) out.push(found);
       }
-      if (!out.length) out = apps.slice(0, MAX_SHELF);
+      if (!out.length) out = apps.slice(0, Prefs.shelfSize());
     }
     shelf = out;
     others = apps.filter(function (x) { return shelf.indexOf(x) < 0; });
@@ -509,6 +509,9 @@
           step: function () { if (Prefs.quotes()) { Prefs.setCoin(i, !Prefs.coin(i)); Data.settingsChanged(); } }});
       })(i);
     }
+    rows.push({label: I18N.lang === 'ru' ? 'Иконок на полке' : tr('Apps na prateleira', 'Apps on the shelf', 'Apps en el estante'),
+      value: String(Prefs.shelfSize()),
+      step: function (d) { cycle('shelfSize', SHELF_SIZES, Prefs.shelfSize(), d); pickShelf(); renderShelf(); }});
     rows.push({label: tr('Prateleira', 'Shelf', 'Estante'), value: '›', step: function (d) { if (d >= 0) openShelfEdit(); }});
     rows.push({label: tr('Ajustes da TV', 'TV Settings', 'Ajustes del TV'), value: '›', step: function (d) { if (d >= 0) tvSettings(); }});
     return rows;
@@ -603,8 +606,8 @@
     var ids = e.ids.slice(), at = ids.indexOf(app.id);
     if (dx === 0) {
       if (at >= 0) ids.splice(at, 1);
-      else if (ids.length < MAX_SHELF) ids.push(app.id);
-      else { toast(tr('A prateleira cabe até ' + MAX_SHELF + ' apps.', 'The shelf holds up to ' + MAX_SHELF + ' apps.', 'El estante tiene hasta ' + MAX_SHELF + ' apps.')); return; }
+      else if (ids.length < Prefs.shelfSize()) ids.push(app.id);
+      else { var max = Prefs.shelfSize(); toast(tr('A prateleira cabe até ' + max + ' apps.', 'The shelf holds up to ' + max + ' apps.', 'El estante tiene hasta ' + max + ' apps.')); return; }
     } else {
       if (at < 0) return;
       var to = Math.max(0, Math.min(ids.length - 1, at + dx));
