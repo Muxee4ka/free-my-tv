@@ -33,8 +33,14 @@
   }
 
   function start() {
-    if (window.PalmSystem) open(parse(window.PalmSystem.launchParams));
+    // On a cold start through lampa/webos the card is already in the address (?card=), and Lampa opens it itself:
+    // opening it a second time leaves Lampa spinning. Remember it as handled instead.
+    var inUrl = Lampa.Utils.gup('card');
+    if (inUrl) handled = inUrl + ':' + (Lampa.Utils.gup('media') || 'movie');
+    else if (window.PalmSystem) open(parse(window.PalmSystem.launchParams));
     document.addEventListener('webOSRelaunch', function (e) {
+      // with handlesRelaunch the app comes to the front only when it asks to
+      if (window.PalmSystem && window.PalmSystem.activate) window.PalmSystem.activate();
       handled = '';   // the same title asked again is a new request
       open(parse(e.detail) || (window.PalmSystem && parse(window.PalmSystem.launchParams)));
     }, true);

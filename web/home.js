@@ -888,7 +888,12 @@
     checkNight();
   });
 
-  function reopened() { reset(); loadApps(function () { renderShelf(); renderDrawer(); Data.refresh(); }); }
+  function reopened() {
+    // LG: with handlesRelaunch the app comes to the front only when it asks to (else the icon seems to do nothing).
+    if (window.PalmSystem && window.PalmSystem.activate) window.PalmSystem.activate();
+    reset();
+    loadApps(function () { renderShelf(); renderDrawer(); Data.refresh(); });
+  }
 
   window.addEventListener('resize', fit);
   document.addEventListener('webOSRelaunch', reopened);   // LG: opened again while running
